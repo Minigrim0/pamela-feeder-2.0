@@ -1,7 +1,14 @@
 import socket
 import scapy.all as scapy
 from redis import StrictRedis
+import os
 
+
+# Redis informations
+REDIS_IP = os.environ.get("REDIS_IP", None)
+REDIS_PORT = os.environ.get("REDIS_PORT", None)
+REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", None)
+REDIS_EXPIRATION = os.environ.get("REDIS_EXPIRATION", None)
 
 def arp_scan(subnet):
     arp_r = scapy.ARP(pdst=subnet)
@@ -75,22 +82,16 @@ def format_host(host):
     return host
 
 
-# @periodic(PERIOD)
-def main(client):
+if __name__ == "__main__":
+    client = StrictRedis(REDIS_IP, REDIS_PORT, password=REDIS_PASSWORD)
+    client.set("incubator_pamela_expiration", REDIS_EXPIRATION)
+
     macdicts = arp_scan("192.168.1.0/24")
 
     maclist = list({x["mac"] for x in macdicts})
-    print(maclist)
     send_mac(client, maclist)
 
     hostnames = {
         x["mac"]: format_host(x["host"]) for x in macdicts if is_host(x["host"])
     }
-    print(hostnames)
     send_hostnames(client, hostnames)
-
-
-client = StrictRedis("172.28.1.4", 6379, password="modepass")
-client.set("incubator_pamela_expiration", 300)
-
-main(client)
