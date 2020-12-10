@@ -10,11 +10,14 @@ REDIS_PORT = os.environ.get("REDIS_PORT", None)
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", None)
 REDIS_EXPIRATION = os.environ.get("REDIS_EXPIRATION", None)
 
+
 def arp_scan(subnet):
-    arp_r = scapy.ARP(pdst=subnet)
-    br = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")
-    request = br / arp_r
-    answered, _ = scapy.srp(request, timeout=1)
+    """
+        Scans the network by sending ARP packets on the given subnet
+        and returns a list of dictionnaries with the IPs, MACs and hostnames
+    """
+
+    answered = scapy.arping(subnet)[0]
 
     machines = []
     for i in answered:
@@ -24,6 +27,7 @@ def arp_scan(subnet):
         except Exception:
             host = "??"
         machines.append({"ip": ip, "mac": mac, "host": host})
+
     return machines
 
 
@@ -40,45 +44,38 @@ def strip_prefix(s, pre):
 
 
 def is_host(host):
-    if "?" in host:
-        return False
-    if len(host) < 3:
-        return False
-
-    return True
+    return not (len(host) < 3 or "?" in host)
 
 
 def send_mac(client, maclist):
     payload = ",".join(maclist)
-    client.setex("incubator_pamela", 300, payload)
+    client.setex("incubator_pamela", REDIS_EXPIRATION, payload)
 
 
-def send_hostnames(client, hosts_dict):
-    if hosts_dict:
-        client.hmset("incubator_pamela_hostnames", hosts_dict)
+def send_hostnames(client, hosts_dict={}):
+    for key, value in hosts_dict.items():
+        client.hset("incubator_pamela_hostnames", key, value)
 
 
 def format_host(host):
+    """
+        Strip know prefixes and suffixes
+    """
+
     host = strip_suffix(host, ".lan.urlab.be")
     host = strip_suffix(host, ".lan")
     host = strip_suffix(host, ".local")
-
     host = strip_suffix(host, "iPodtouch")
     host = strip_suffix(host, "-PC")
     host = strip_suffix(host, "-pc")
 
     host = strip_prefix(host, "pc-")
     host = strip_prefix(host, "PC-")
-
+    host = strip_prefix(host, "DESKTOP-")
     host = strip_prefix(host, "LAPTOP-")
     host = strip_prefix(host, "iPod-de-")
+    host = strip_prefix(host, "iPadde")
 
-    # if host.startswith("android"):
-    #     match = re.match(ANDROID_REGEX, host)
-    #     if match:
-    #         host = "unknown-android"
-    #     else:
-    #         host = strip_prefix(host, "android-")
     return host
 
 
